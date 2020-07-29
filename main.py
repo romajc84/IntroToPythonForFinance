@@ -1,126 +1,106 @@
-import pandas as pd
-import numpy as np
-import yfinance as yf
 import datetime as dt
+import pandas as pd
 from pandas_datareader import data as pdr
+import yfinance as yf
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename
+import os
+from pandas import ExcelWriter
 
 yf.pdr_override()
-
-stock = input("Enter a stock ticker symbol: ")
-print(stock)
-
-startyear = 2019
-startmonth = 8
-startday = 1
-
-start = dt.datetime(startyear, startmonth, startday)
-
+start = dt.datetime(2017, 12, 1)
 now = dt.datetime.now()
 
-df = pdr.get_data_yahoo(stock, start, now)
+root = Tk()
+ftypes = [(".xlsm", "*.xlsx", ".xls")]
+ttl = "Title"
+dir1 = '/Users/joeyr/Development/Projects/Python/Learning/PythonForFinanceYT'
+filePath = askopenfilename(filetypes=ftypes, initialdir=dir1, title=ttl)
+filePath = r"/Users/joeyr/Development/Projects/Python/Learning/PythonForFinanceYT/RichardStocks.xlsx"
 
+stocklist = pd.read_excel(filePath)
 
-# ma = 50
+exportList = pd.DataFrame(columns=['Stock', "RS_Rating", "50 Day MA",
+                                   "150 Day Ma", "200 Day MA", "52 Week Low", "52 week High"])
 
-# smaString = "Sma_" + str(ma)
+for i in stocklist.index:
+    stock = str(stocklist["Symbol"][i])
+    RS_Rating = stocklist["RS Rating"][i]
 
-# df[smaString] = df.iloc[:, 4].rolling(window=ma).mean()
+    try:
+        df = pdr.get_data_yahoo(stock, start, now)
 
-emasUsed = [3, 5, 8, 10, 12, 15, 30, 35, 40, 45, 50, 60]
-for x in emasUsed:
-    ema = x
-    df["Ema_" + str(ema)] = round(df.iloc[:,
-                                          4].ewm(span=ema, adjust=False).mean(), 2)
+        smaUsed = [50, 150, 200]
+        for x in smaUsed:
+            sma = x
+            df["SMA_"+str(sma)] = round(df.iloc[:,
+                                                4].rolling(window=sma).mean(), 2)
 
-print(df.tail())
+        currentClose = df["Adj Close"][-1]
+        moving_average_50 = df["SMA_50"][-1]
+        moving_average_150 = df["SMA_150"][-1]
+        moving_average_200 = df["SMA_200"][-1]
+        low_of_52week = min(df["Adj Close"][-260:])
+        high_of_52week = max(df["Adj Close"][-260:])
+        try:
+            moving_average_200_20 = df["SMA_200"][-20]
 
-pos = 0
-num = 0
-percentChange = []
+        except Exception:
+            moving_average_200_20 = 0
 
-for i in df.index:
-    cmin = min(df["Ema_3"][i], df["Ema_5"][i], df["Ema_8"]
-               [i], df["Ema_10"][i], df["Ema_12"][i], df["Ema_15"][i])
-    cmax = max(df["Ema_30"][i], df["Ema_35"][i], df["Ema_40"]
-               [i], df["Ema_45"][i], df["Ema_50"][i], df["Ema_60"][i])
+        # Condition 1: Current Price > 150 SMA and > 200 SMA
+        if(currentClose > moving_average_150 > moving_average_200):
+            cond_1 = True
+        else:
+            cond_1 = False
+        # Condition 2: 150 SMA and > 200 SMA
+        if(moving_average_150 > moving_average_200):
+            cond_2 = True
+        else:
+            cond_2 = False
+        # Condition 3: 200 SMA trending up for at least 1 month (ideally 4-5 months)
+        if(moving_average_200 > moving_average_200_20):
+            cond_3 = True
+        else:
+            cond_3 = False
+        # Condition 4: 50 SMA> 150 SMA and 50 SMA> 200 SMA
+        if(moving_average_50 > moving_average_150 > moving_average_200):
+            #print("Condition 4 met")
+            cond_4 = True
+        else:
+            #print("Condition 4 not met")
+            cond_4 = False
+        # Condition 5: Current Price > 50 SMA
+        if(currentClose > moving_average_50):
+            cond_5 = True
+        else:
+            cond_5 = False
+        # Condition 6: Current Price is at least 30% above 52 week low (Many of the best are up 100-300% before coming out of consolidation)
+        if(currentClose >= (1.3*low_of_52week)):
+            cond_6 = True
+        else:
+            cond_6 = False
+        # Condition 7: Current Price is within 25% of 52 week high
+        if(currentClose >= (.75*high_of_52week)):
+            cond_7 = True
+        else:
+            cond_7 = False
+        # Condition 8: IBD RS rating >70 and the higher the better
+        if(RS_Rating > 70):
+            cond_8 = True
+        else:
+            cond_8 = False
 
-    close = df["Adj Close"][i]
+        if(cond_1 and cond_2 and cond_3 and cond_4 and cond_5 and cond_6 and cond_7 and cond_8):
+            exportList = exportList.append({'Stock': stock, "RS_Rating": RS_Rating, "50 Day MA": moving_average_50, "150 Day Ma": moving_average_150,
+                                            "200 Day MA": moving_average_200, "52 Week Low": low_of_52week, "52 week High": high_of_52week}, ignore_index=True)
+    except Exception:
+        print("No data on "+stock)
 
-    if (cmin > cmax):
-        print("Red White Blue")
-        if (pos == 0):
-            bp = close
-            pos = 1
-            print("Buying now at " + str(bp))
+print(exportList)
 
-    elif (cmin < cmax):
-        print("Blue White Red")
-        if (pos == 1):
-            pos = 0
-            sp = close
-            print("Selling now at " + str(sp))
-            pc = (sp / bp - 1) * 100
-            percentChange.append(pc)
+newFile = os.path.dirname(filePath)+"/ScreenOutput.xlsx"
 
-    if (num == df["Adj Close"].count() - 1 and pos == 1):
-        pos = 0
-        sp = close
-        print("Selling now at " + str(sp))
-        pc = (sp / bp - 1) * 100
-        percentChange.append(pc)
-
-    num += 1
-
-print(percentChange)
-
-gains = 0
-ng = 0
-losses = 0
-nl = 0
-totalR = 1
-
-for i in percentChange:
-    if (i > 0):
-        gains += i
-        ng += 1
-    else:
-        losses += i
-        nl += 1
-    totalR = totalR * ((i / 100) + 1)
-
-totalR = round((totalR - 1) * 100, 2)
-
-if (ng > 0):
-    avgGain = gains / ng
-    maxR = str(max(percentChange))
-else:
-    avgGain = 0
-    maxR = "undefined"
-
-if (nl > 0):
-    avgLoss = losses / nl
-    maxL = str(min(percentChange))
-    ratio = str(-avgGain / avgLoss)
-else:
-    avgLoss = 0
-    maxL = "undefined"
-    ratio = "inf"
-
-if (ng > 0 or nl > 0):
-    battingAvg = ng / (ng + nl)
-else:
-    battingAvg = 0
-
-print()
-print("Results for " + stock + " going back to " +
-      str(df.index[0])+", Sample size: "+str(ng+nl)+" trades")
-print("EMAs used: "+str(emasUsed))
-print("Batting Avg: " + str(battingAvg))
-print("Gain/loss ratio: " + ratio)
-print("Average Gain: " + str(avgGain))
-print("Average Loss: " + str(avgLoss))
-print("Max Return: " + maxR)
-print("Max Loss: " + maxL)
-print("Total return over "+str(ng+nl) + " trades: " + str(totalR)+"%")
-#print("Example return Simulating "+str(n)+ " trades: "+ str(nReturn)+"%" )
-print()
+writer = ExcelWriter(newFile)
+exportList.to_excel(writer, "Sheet1")
+writer.save()
