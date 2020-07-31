@@ -7,60 +7,61 @@ import yfinance as yf
 import datetime as dt
 import pandas as pd
 from pandas_datareader import data as pdr
-import time
-
-EMAIL_ADDRESS = ''
-EMAIL_PASSWORD = ''
-
-msg = EmailMessage()
+import matplotlib.pyplot as plt
 
 yf.pdr_override()
-start = dt.datetime(2018, 12, 1)
+start = dt.datetime(2019, 6, 1)
 now = dt.datetime.now()
 
-stock = "QQQ"
-TargetPrice = 180
+stock = input("Enter the stock symbol: ")
 
-msg["Subject"] = "Alert on " + stock
-msg["From"] = EMAIL_ADDRESS
-msg["To"] = ''
-
-alerted = False
-
-while 1:
+while stock != "quit":
 
     df = pdr.get_data_yahoo(stock, start, now)
-    currentClose = df["Adj Close"][-1]
 
-    condition = currentClose > TargetPrice
+    df["High"].plot(label="high")
 
-    if (condition and alerted == False):
+    pivots = []
+    dates = []
+    counter = 0
+    lastPivot = 0
 
-        alerted = True
+    Range = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    dateRange = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-        message = stock + " Has activated the alert price of " + str(TargetPrice) + \
-            "\nCurrent Price: " + str(currentClose)
+    for i in df.index:
+        currentMax = max(Range, default=0)
+        value = round(df["High"][i], 2)
 
-        msg.set_content(message)
+        Range = Range[1:9]
+        Range.append(value)
+        dateRange = dateRange[1:9]
+        dateRange.append(i)
 
-        files = [
-            r"/Users/joeyr/Development/Projects/Python/Learning/PythonForFinanceYT/Fundamental List.xlsx"]
+        if currentMax == max(Range, default=0):
+            counter += 1
+        else:
+            counter = 0
+        if counter == 5:
+            lastPivot = currentMax
+            dateloc = Range.index(lastPivot)
+            lastDate = dateRange[dateloc]
 
-        for file in files:
-            with open(file, "rb") as f:
-                file_data = f.read()
-                file_name = "FundamentalList.xlsx"
+            pivots.append(lastPivot)
+            dates.append(lastDate)
 
-                msg.add_attachment(
-                    file_data, maintype="application", subtype='ocetet-stream', filename=file_name)
+    print()
 
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            smtp.send_message(msg)
+    # print(str(pivots))
+    # print(str(dates))
+    timeD = dt.timedelta(days=30)
 
-            print('completed')
+    for index in range(len(pivots)):
+        print(str(pivots[index]) + ": " + str(dates[index]))
 
-    else:
-        print('No new alerts')
+        plt.plot_date([dates[index], dates[index] + timeD], [pivots[index],
+                       pivots[index]], linestyle="-", linewidth=2, marker=",")
 
-    time.sleep(60)
+    plt.show()
+
+    stock = input("Enter the stock symbol: ")
